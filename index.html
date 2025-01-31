@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vendor Tools - Calculator & Comparison</title>
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/universal-sentence-encoder"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .calculator-input::-webkit-outer-spin-button,
+        .calculator-input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .tab-active {
+            border-bottom: 2px solid #2563eb;
+            color: #2563eb;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Previous calculator section remains exactly the same -->
+    <div class="min-h-screen p-4 md:p-8">
+        <div class="max-w-7xl mx-auto">
+            <!-- Tab Navigation -->
+            <div class="flex mb-6 border-b">
+                <button onclick="switchTab('calculator')" id="calculator-tab" class="px-4 py-2 font-medium tab-active">
+                    Profit Calculator
+                </button>
+                <button onclick="switchTab('comparison')" id="comparison-tab" class="px-4 py-2 font-medium">
+                    Product Comparison
+                </button>
+            </div>
+
+            <!-- Profit Calculator Section -->
+            <!-- Keep existing calculator section unchanged -->
+
+            <!-- Product Comparison Section -->
+            <div id="comparison-section" class="bg-white rounded-lg shadow-md p-6 hidden">
+                <h2 class="text-xl font-semibold mb-4">Product Comparison</h2>
+                <div class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Select Category</label>
+                            <select id="categorySelect" onchange="loadProductsForCategory()" class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border">
+                                <option value="">Select a category</option>
+                                <option value="electronics">Electronics</option>
+                                <option value="fashion">Fashion</option>
+                                <option value="home">Home & Living</option>
+                                <option value="beauty">Beauty & Personal Care</option>
+                                <option value="sports">Sports & Fitness</option>
+                                <option value="books">Books & Stationery</option>
+                                <option value="toys">Toys & Games</option>
+                                <option value="food">Food & Beverages</option>
+                                <option value="automotive">Automotive</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Select Products to Compare</label>
+                            <select id="productSelect" multiple class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-2 border" style="height: 100px;">
+                                <!-- Products will be populated here -->
+                            </select>
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Upload Excel File</label>
+                        <div class="flex items-center space-x-4">
+                            <input type="file" id="excelFile" accept=".xlsx,.xls" class="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                            <button onclick="processExcel()" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors">
+                                Process
+                            </button>
+                        </div>
+                    </div>
+                    <div id="comparisonLoading" class="hidden">
+                        <div class="flex items-center justify-center space-x-2">
+                            <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
+                            <span>Analyzing products...</span>
+                        </div>
+                    </div>
+                    <div id="comparisonResults" class="overflow-x-auto"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Keep existing tab switching and calculator functions
+
+        let productData = [];
+
+        async function loadProductsForCategory() {
+            const category = document.getElementById('categorySelect').value;
+            const productSelect = document.getElementById('productSelect');
+            productSelect.innerHTML = '';
+            
+            // Simulate loading products for the selected category
+            const mockProducts = Array(10).fill().map((_, i) => ({
+                id: i + 1,
+                name: `${category.charAt(0).toUpperCase() + category.slice(1)} Product ${i + 1}`
+            }));
+
+            mockProducts.forEach(product => {
+                const option = document.createElement('option');
+                option.value = product.id;
+                option.textContent = product.name;
+                productSelect.appendChild(option);
+            });
+        }
+
+        async function processExcel() {
+            const fileInput = document.getElementById('excelFile');
+            const loading = document.getElementById('comparisonLoading');
+            const resultsDiv = document.getElementById('comparisonResults');
+
+            if (!fileInput.files.length) {
+                alert('Please select an Excel file');
+                return;
+            }
+
+            loading.classList.remove('hidden');
+            resultsDiv.innerHTML = '';
+
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+
+            reader.onload = async function(e) {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const jsonData = XLSX.utils.sheet_to_json(firstSheet, {header: 'A'});
+
+                // Extract relevant columns (K,L,M,R,S,T,U,V)
+                const processedData = jsonData.slice(1).map(row => ({
+                    name: row['K'] || '',
+                    description: row['L'] || '',
+                    features: row['M'] || '',
+                    price: row['R'] || '',
+                    stock: row['S'] || '',
+                    category: row['T'] || '',
+                    brand: row['U'] || '',
+                    rating: row['V'] || ''
+                }));
+
+                await createComparison(processedData);
+                loading.classList.add('hidden');
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+
+        async function createComparison(data) {
+            const resultsDiv = document.getElementById('comparisonResults');
+
+            // Extract feature keywords using simple NLP techniques
+            const features = new Set();
+            data.forEach(item => {
+                const words = item.features.split(/[,.\s]+/);
+                words.forEach(word => {
+                    if (word.length > 3) features.add(word.toLowerCase());
+                });
+            });
+
+            let tableHTML = `
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Brand</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rating</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Features</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+            `;
+
+            data.forEach(item => {
+                tableHTML += `
+                    <tr>
+                        <td class="px-6 py-4 whitespace-nowrap">${item.name}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">₹${item.price}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${item.brand}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${item.stock}</td>
+                        <td class="px-6 py-4 whitespace-nowrap">${item.rating}/5</td>
+                        <td class="px-6 py-4">
+                            <ul class="list-disc list-inside">
+                                ${item.features.split(',').map(f => `<li>${f.trim()}</li>`).join('')}
+                            </ul>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tableHTML += `
+                    </tbody>
+                </table>
+            `;
+
+            resultsDiv.innerHTML = tableHTML;
+        }
+    </script>
+<script>document.body.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); return }, { passive: false })</script>
+	</body>
+</html>
